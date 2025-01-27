@@ -1,6 +1,7 @@
 package telego
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -14,7 +15,7 @@ import (
 
 type testCallerType struct{}
 
-func (c testCallerType) Call(_ string, _ *ta.RequestData) (*ta.Response, error) {
+func (c testCallerType) Call(_ context.Context, _ string, _ *ta.RequestData) (*ta.Response, error) {
 	panic("implement me")
 }
 
@@ -179,10 +180,10 @@ func TestWithTestServerPath(t *testing.T) {
 func TestWithHealthCheck(t *testing.T) {
 	bot := &Bot{}
 
-	err := WithHealthCheck()(bot)
+	err := WithHealthCheck(testCtx)(bot)
 	require.NoError(t, err)
 
-	assert.True(t, bot.healthCheckRequested)
+	assert.Equal(t, testCtx, bot.healthCheckContext)
 }
 
 func TestWithWarnings(t *testing.T) {

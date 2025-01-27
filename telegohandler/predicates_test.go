@@ -1,6 +1,7 @@
 package telegohandler
 
 import (
+	"context"
 	"regexp"
 	"testing"
 
@@ -42,8 +43,8 @@ func TestPredicates(t *testing.T) {
 		{
 			name: "and_matches",
 			predicate: And(
-				func(update telego.Update) bool { return true },
-				func(update telego.Update) bool { return true },
+				func(_ context.Context, _ telego.Update) bool { return true },
+				func(_ context.Context, _ telego.Update) bool { return true },
 			),
 			update:  telego.Update{},
 			matches: true,
@@ -51,8 +52,8 @@ func TestPredicates(t *testing.T) {
 		{
 			name: "and_not_matches",
 			predicate: And(
-				func(update telego.Update) bool { return true },
-				func(update telego.Update) bool { return false },
+				func(_ context.Context, _ telego.Update) bool { return true },
+				func(_ context.Context, _ telego.Update) bool { return false },
 			),
 			update:  telego.Update{},
 			matches: false,
@@ -60,8 +61,8 @@ func TestPredicates(t *testing.T) {
 		{
 			name: "or_matches",
 			predicate: Or(
-				func(update telego.Update) bool { return true },
-				func(update telego.Update) bool { return false },
+				func(_ context.Context, _ telego.Update) bool { return true },
+				func(_ context.Context, _ telego.Update) bool { return false },
 			),
 			update:  telego.Update{},
 			matches: true,
@@ -69,39 +70,21 @@ func TestPredicates(t *testing.T) {
 		{
 			name: "or_not_matches",
 			predicate: Or(
-				func(update telego.Update) bool { return false },
-				func(update telego.Update) bool { return false },
-			),
-			update:  telego.Update{},
-			matches: false,
-		},
-		{
-			name: "union_matches",
-			predicate: Union(
-				func(update telego.Update) bool { return true },
-				func(update telego.Update) bool { return false },
-			),
-			update:  telego.Update{},
-			matches: true,
-		},
-		{
-			name: "union_not_matches",
-			predicate: Union(
-				func(update telego.Update) bool { return false },
-				func(update telego.Update) bool { return false },
+				func(_ context.Context, _ telego.Update) bool { return false },
+				func(_ context.Context, _ telego.Update) bool { return false },
 			),
 			update:  telego.Update{},
 			matches: false,
 		},
 		{
 			name:      "not_matches",
-			predicate: Not(func(update telego.Update) bool { return false }),
+			predicate: Not(func(_ context.Context, _ telego.Update) bool { return false }),
 			update:    telego.Update{},
 			matches:   true,
 		},
 		{
 			name:      "not_not_matches",
-			predicate: Not(func(update telego.Update) bool { return true }),
+			predicate: Not(func(_ context.Context, _ telego.Update) bool { return true }),
 			update:    telego.Update{},
 			matches:   false,
 		},
@@ -610,6 +593,78 @@ func TestPredicates(t *testing.T) {
 			matches:   false,
 		},
 		{
+			name:      "any_business_connection_matches",
+			predicate: AnyBusinessConnection(),
+			update:    telego.Update{BusinessConnection: &telego.BusinessConnection{}},
+			matches:   true,
+		},
+		{
+			name:      "any_business_connection_not_matches",
+			predicate: AnyBusinessConnection(),
+			update:    telego.Update{},
+			matches:   false,
+		},
+		{
+			name:      "any_business_message_matches",
+			predicate: AnyBusinessMessage(),
+			update:    telego.Update{BusinessMessage: &telego.Message{}},
+			matches:   true,
+		},
+		{
+			name:      "any_business_message_not_matches",
+			predicate: AnyBusinessMessage(),
+			update:    telego.Update{},
+			matches:   false,
+		},
+		{
+			name:      "any_edited_business_message_matches",
+			predicate: AnyEditedBusinessMessage(),
+			update:    telego.Update{EditedBusinessMessage: &telego.Message{}},
+			matches:   true,
+		},
+		{
+			name:      "any_edited_business_message_not_matches",
+			predicate: AnyEditedBusinessMessage(),
+			update:    telego.Update{},
+			matches:   false,
+		},
+		{
+			name:      "any_deleted_business_messages_matches",
+			predicate: AnyDeletedBusinessMessages(),
+			update:    telego.Update{DeletedBusinessMessages: &telego.BusinessMessagesDeleted{}},
+			matches:   true,
+		},
+		{
+			name:      "any_deleted_business_messages_not_matches",
+			predicate: AnyDeletedBusinessMessages(),
+			update:    telego.Update{},
+			matches:   false,
+		},
+		{
+			name:      "any_message_reaction_matches",
+			predicate: AnyMessageReaction(),
+			update:    telego.Update{MessageReaction: &telego.MessageReactionUpdated{}},
+			matches:   true,
+		},
+		{
+			name:      "any_message_reaction_not_matches",
+			predicate: AnyMessageReaction(),
+			update:    telego.Update{},
+			matches:   false,
+		},
+		{
+			name:      "any_message_reaction_count_matches",
+			predicate: AnyMessageReactionCount(),
+			update:    telego.Update{MessageReactionCount: &telego.MessageReactionCountUpdated{}},
+			matches:   true,
+		},
+		{
+			name:      "any_message_reaction_count_not_matches",
+			predicate: AnyMessageReactionCount(),
+			update:    telego.Update{},
+			matches:   false,
+		},
+		{
 			name:      "any_inline_query_matches",
 			predicate: AnyInlineQuery(),
 			update:    telego.Update{InlineQuery: &telego.InlineQuery{}},
@@ -826,6 +881,18 @@ func TestPredicates(t *testing.T) {
 			matches:   false,
 		},
 		{
+			name:      "any_purchased_paid_media_matches",
+			predicate: AnyPurchasedPaidMedia(),
+			update:    telego.Update{PurchasedPaidMedia: &telego.PaidMediaPurchased{}},
+			matches:   true,
+		},
+		{
+			name:      "any_purchased_paid_media_not_matches",
+			predicate: AnyPurchasedPaidMedia(),
+			update:    telego.Update{},
+			matches:   false,
+		},
+		{
 			name:      "any_poll_matches",
 			predicate: AnyPoll(),
 			update:    telego.Update{Poll: &telego.Poll{}},
@@ -882,6 +949,30 @@ func TestPredicates(t *testing.T) {
 		{
 			name:      "any_chat_join_request_not_matches",
 			predicate: AnyChatJoinRequest(),
+			update:    telego.Update{},
+			matches:   false,
+		},
+		{
+			name:      "any_chat_boost_matches",
+			predicate: AnyChatBoost(),
+			update:    telego.Update{ChatBoost: &telego.ChatBoostUpdated{}},
+			matches:   true,
+		},
+		{
+			name:      "any_chat_boost_not_matches",
+			predicate: AnyChatBoost(),
+			update:    telego.Update{},
+			matches:   false,
+		},
+		{
+			name:      "any_removed_chat_boost_matches",
+			predicate: AnyRemovedChatBoost(),
+			update:    telego.Update{RemovedChatBoost: &telego.ChatBoostRemoved{}},
+			matches:   true,
+		},
+		{
+			name:      "any_removed_chat_boost_not_matches",
+			predicate: AnyRemovedChatBoost(),
 			update:    telego.Update{},
 			matches:   false,
 		},
@@ -1307,9 +1398,10 @@ func TestPredicates(t *testing.T) {
 		},
 	}
 
+	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.matches, tt.predicate(tt.update))
+			assert.Equal(t, tt.matches, tt.predicate(ctx, tt.update))
 		})
 	}
 }

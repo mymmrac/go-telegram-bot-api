@@ -1,11 +1,13 @@
 package telego
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
 	"strings"
+	"sync/atomic"
 
 	"github.com/valyala/fasthttp"
 
@@ -46,11 +48,30 @@ type Bot struct {
 	constructor ta.RequestConstructor
 
 	useTestServerPath     bool
-	healthCheckRequested  bool
 	reportWarningAsErrors bool
+	healthCheckContext    context.Context
 
-	longPollingContext *longPollingContext
-	webhookContext     *webhookContext
+	running atomic.Int32
+}
+
+const (
+	runningNone        = 0
+	runningLongPolling = 1
+	runningWebhook     = 2
+)
+
+func (b *Bot) run(actionToRun int32) error {
+	if b.running.CompareAndSwap(runningNone, actionToRun) {
+		return nil
+	}
+	switch b.running.Load() {
+	case runningLongPolling:
+		return errors.New("telego: long polling already running")
+	case runningWebhook:
+		return errors.New("telego: webhook already running")
+	default:
+		return errors.New("telego: unknown running state")
+	}
 }
 
 // BotOption represents an option that can be applied to Bot
@@ -78,12 +99,12 @@ func NewBot(token string, options ...BotOption) (*Bot, error) {
 
 	for _, option := range options {
 		if err := option(b); err != nil {
-			return nil, fmt.Errorf("telego: options: %w", err)
+			return nil, fmt.Errorf("telego: bot options: %w", err)
 		}
 	}
 
-	if b.healthCheckRequested {
-		if _, err := b.GetMe(); err != nil {
+	if b.healthCheckContext != nil {
+		if _, err := b.GetMe(b.healthCheckContext); err != nil {
 			return nil, fmt.Errorf("telego: health check: %w", err)
 		}
 	}
@@ -110,8 +131,8 @@ func (b *Bot) FileDownloadURL(filepath string) string {
 }
 
 // performRequest executes and parses response of method
-func (b *Bot) performRequest(methodName string, parameters any, vs ...any) error {
-	resp, err := b.constructAndCallRequest(methodName, parameters)
+func (b *Bot) performRequest(ctx context.Context, methodName string, parameters any, vs ...any) error {
+	resp, err := b.constructAndCallRequest(ctx, methodName, parameters)
 	if err != nil {
 		b.log.Errorf("Execution error %s: %s", methodName, err)
 		return fmt.Errorf("internal execution: %w", err)
@@ -144,7 +165,7 @@ func (b *Bot) performRequest(methodName string, parameters any, vs ...any) error
 }
 
 // constructAndCallRequest creates and executes request with parsing of parameters
-func (b *Bot) constructAndCallRequest(methodName string, parameters any) (*ta.Response, error) {
+func (b *Bot) constructAndCallRequest(ctx context.Context, methodName string, parameters any) (*ta.Response, error) {
 	filesParams, hasFiles := filesParameters(parameters)
 	var data *ta.RequestData
 
@@ -182,7 +203,7 @@ func (b *Bot) constructAndCallRequest(methodName string, parameters any) (*ta.Re
 	debugData := strings.TrimSuffix(debug.String(), "\n")
 	b.log.Debugf("API call to: %q, with data: %s", url, debugData)
 
-	resp, err := b.api.Call(url, data)
+	resp, err := b.api.Call(ctx, url, data)
 	if err != nil {
 		return nil, fmt.Errorf("request call: %w", err)
 	}
@@ -269,19 +290,21 @@ func parseField(field reflect.Value) (string, error) {
 	return value, nil
 }
 
-func isNil(i any) bool {
-	if i == nil {
+// isNil checks if the value, or it's underlying interface is nil
+func isNil(v any) bool {
+	if v == nil {
 		return true
 	}
 
-	switch reflect.TypeOf(i).Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
-		return reflect.ValueOf(i).IsNil()
+	switch reflect.TypeOf(v).Kind() {
+	case reflect.Interface, reflect.Ptr, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func:
+		return reflect.ValueOf(v).IsNil()
 	default:
 		return false
 	}
 }
 
+// logRequestWithFiles logs request with files
 func logRequestWithFiles(debug *strings.Builder, parameters map[string]string, files map[string]ta.NamedReader) {
 	debugFiles := make([]string, 0, len(files))
 	for k, v := range files {
@@ -297,23 +320,10 @@ func logRequestWithFiles(debug *strings.Builder, parameters map[string]string, f
 	}
 	//nolint:errcheck
 	debugJSON, _ := json.Marshal(parameters)
-
 	_, _ = debug.WriteString(fmt.Sprintf("parameters: %s, files: {%s}", debugJSON, strings.Join(debugFiles, ", ")))
 }
 
 // ToPtr converts value into a pointer to value
 func ToPtr[T any](value T) *T {
 	return &value
-}
-
-// safeSend safely send to chan and return true if chan was closed
-func safeSend[T any](ch chan<- T, value T) (closed bool) {
-	defer func() {
-		if recover() != nil {
-			closed = true
-		}
-	}()
-
-	ch <- value
-	return false
 }
